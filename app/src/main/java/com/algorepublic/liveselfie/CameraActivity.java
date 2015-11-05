@@ -1,103 +1,69 @@
 package com.algorepublic.liveselfie;
 
-import android.hardware.Camera;
-import android.media.CamcorderProfile;
-import android.media.MediaRecorder;
-import android.os.Bundle;
-import android.os.Environment;
-import android.util.Log;
-import android.view.SurfaceHolder;
-import android.view.SurfaceView;
-import android.view.View;
-import android.widget.ImageView;
+        import android.content.res.Configuration;
+        import android.hardware.Camera;
+        import android.media.MediaRecorder;
+        import android.os.Bundle;
+        import android.os.Environment;
+        import android.util.Log;
+        import android.view.Surface;
+        import android.view.SurfaceHolder;
+        import android.view.SurfaceView;
+        import android.view.View;
+        import android.widget.ImageView;
+        import android.widget.Toast;
 
-import java.io.File;
-import java.io.IOException;
+        import java.io.File;
+        import java.io.IOException;
+        import java.text.SimpleDateFormat;
+        import java.util.Date;
 
+/**
+ * Created by ahmad on 11/3/15.
+ */
+public class CameraActivity extends BaseActivity implements SurfaceHolder.Callback , MediaRecorder.OnInfoListener {
+    private final String VIDEO_PATH_NAME = "/mnt/sdcard/VGA_30fps_512vbrate.mp4";
 
-@SuppressWarnings("ALL")
-public class CameraActivity extends BaseActivity implements SurfaceHolder.Callback{
-
-
-    private MediaRecorder recorder;
-    private SurfaceHolder holder;
-    private boolean recording = false;
-
+    View view;
+    Camera camera;
+    private boolean frontCamera;
+    MediaRecorder mediaRecorder;
+    SurfaceHolder surfaceHolder;
+    boolean mInitSuccesful;
+    SurfaceView surfaceView;
+    ImageView btn;
+    private boolean cameraFront=false;
+    Camera.Parameters parameters;
+    File OutputFile;
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_camera);
-        recorder = new MediaRecorder();
-        SurfaceView cameraView = (SurfaceView) findViewById(R.id.surfaceView);
-        holder = cameraView.getHolder();
-        holder.addCallback(this);
-        holder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
+        surfaceView = (SurfaceView) findViewById(R.id.surfaceView);
+        btn = (ImageView) findViewById(R.id.camera_button);
 
-        ImageView cameraButton = (ImageView) findViewById(R.id.camera_button);
-        cameraButton.setOnClickListener(new CameraClickListener());
-    }
+        surfaceHolder = surfaceView.getHolder();
+        surfaceHolder.addCallback(this);
+        surfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
 
-    private void initRecorder() {
-        File path = Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_MOVIES);
-        File file = new File(path, "/" + "video.mp4");
-        String video= "video.mp4";
-        CamcorderProfile cpHigh = CamcorderProfile.get(CamcorderProfile.QUALITY_HIGH);
-//        recorder.setProfile(cpHigh);
-        recorder.setOutputFile(file.getAbsolutePath());
-        recorder.setMaxDuration(5000); // 5 seconds
-        recorder.setMaxFileSize(5000000); // Approximately 5 megabytes
-        recorder.setOnInfoListener(new StopRecordingListener());
-    }
-
-
-    private void prepareRecorder() {
-        recorder.setPreviewDisplay(holder.getSurface());
-        try {
-            recorder.prepare();
-        } catch (IllegalStateException e) {
-            e.printStackTrace();
-            finish();
-        } catch (IOException e) {
-            e.printStackTrace();
-            finish();
-        }
-    }
-
-    class StopRecordingListener implements MediaRecorder.OnInfoListener{
-
-        @Override
-        public void onInfo(MediaRecorder mediaRecorder, int what, int extra) {
-            if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) {
-                mediaRecorder.stop();
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                mediaRecorder.start();
             }
-        }
+        });
+
     }
-
-    class CameraClickListener implements View.OnClickListener{
-
-        @Override
-        public void onClick(View view) {
-            if (recording) {
-                recorder.stop();
-                recording = false;
-
-                // Let's initRecorder so we can record again
-                initRecorder();
-                prepareRecorder();
-            } else {
-                recording = true;
-                recorder.start();
-            }
-        }
-    }
-
 
     @Override
     public void surfaceCreated(SurfaceHolder surfaceHolder) {
-        initRecorder();
-        prepareRecorder();
+        try{
+            if (!mInitSuccesful)
+                initRecorder(surfaceHolder.getSurface());
+        } catch (IOException e){
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -105,35 +71,91 @@ public class CameraActivity extends BaseActivity implements SurfaceHolder.Callba
 
     }
 
-
     @Override
     public void surfaceDestroyed(SurfaceHolder surfaceHolder) {
-        if (recording) {
-            recorder.stop();
-            recording = false;
-        }
-        recorder.release();
-        finish();
-
+        shutdown();
     }
 
-    private int getFrontCameraId() {
-        int cameraCount = 0;
-        Camera cam = null;
-        Camera.CameraInfo cameraInfo = new Camera.CameraInfo();
-        cameraCount = Camera.getNumberOfCameras();
-        for (int camIdx = 0; camIdx < cameraCount; camIdx++) {
-            Camera.getCameraInfo(camIdx, cameraInfo);
-            if (cameraInfo.facing == Camera.CameraInfo.CAMERA_FACING_FRONT) {
-                try {
-                    return camIdx;
-                } catch (RuntimeException e) {
-                    Log.e("Camera", "Camera failed to open: " + e.getLocalizedMessage());
-                }
-            }
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            Toast.makeText(getApplicationContext(), "landscape", Toast.LENGTH_SHORT).show();
+        } else if (newConfig.orientation == Configuration.ORIENTATION_PORTRAIT){
+            Toast.makeText(getApplicationContext(), "portrait", Toast.LENGTH_SHORT).show();
         }
-
-        return 0;
     }
 
+    private void initRecorder(Surface surface) throws IOException {
+        // It is very important to unlock the camera before doing setCamera
+        // or it will results in a black preview
+        OutputFile = new File(Environment.getExternalStorageDirectory().getPath());
+        String video= "/DCIM/100MEDIA/Video";
+        if(camera == null) {
+            camera = Camera.open(Camera.CameraInfo.CAMERA_FACING_FRONT);
+            camera.setPreviewDisplay(surfaceHolder);
+            camera.startPreview();
+            camera.setDisplayOrientation(90);
+            parameters = camera.getParameters();
+//            surfaceView.getLayoutParams().width = parameters.getPreviewSize().width;
+//            surfaceView.getLayoutParams().height = parameters.getPreviewSize().height;
+            parameters.setPreviewSize(parameters.getPreviewSize().width,parameters.getPreviewSize().height);
+            camera.setParameters(parameters);
+            camera.unlock();
+            cameraFront = true;
+        }
+
+        if(mediaRecorder == null)  mediaRecorder = new MediaRecorder();
+        mediaRecorder.setPreviewDisplay(surface);
+        mediaRecorder.setCamera(camera);
+
+        mediaRecorder.setVideoSource(MediaRecorder.VideoSource.DEFAULT);
+        //       mMediaRecorder.setOutputFormat(8);
+        mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+        mediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
+        mediaRecorder.setVideoEncodingBitRate(512 * 1000);
+        mediaRecorder.setVideoFrameRate(30);
+        mediaRecorder.setVideoSize(640, 480);
+        mediaRecorder.setMaxDuration(5000);
+        mediaRecorder.setOnInfoListener(this);
+        mediaRecorder.setOutputFile(VIDEO_PATH_NAME);
+        mediaRecorder.setOrientationHint(270);
+        try {
+            mediaRecorder.prepare();
+        } catch (IllegalStateException e) {
+            // This is thrown if the previous calls are not called with the
+            // proper order
+            e.printStackTrace();
+        }
+
+        mInitSuccesful = true;
+    }
+
+    private void shutdown() {
+        // Release MediaRecorder and especially the Camera as it's a shared
+        // object that can be used by other applications
+        camera.stopPreview();
+        mediaRecorder.reset();
+        mediaRecorder.release();
+        camera.release();
+
+        // once the objects have been released they can't be reused
+        mediaRecorder = null;
+        camera = null;
+    }
+
+    @Override
+    public void onInfo(MediaRecorder mediaRecorder, int i, int i1) {
+        if (i == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED){
+            Log.e("recording Finished","yes");
+            mediaRecorder.stop();
+            mediaRecorder.reset();
+            mediaRecorder.release();
+//            try {
+//                initRecorder(surfaceHolder.getSurface());
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            }
+        }
+    }
 }
