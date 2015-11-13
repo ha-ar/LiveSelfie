@@ -5,6 +5,10 @@ package com.algorepublic.liveselfie;
         import android.content.Intent;
         import android.content.res.Configuration;
         import android.graphics.Bitmap;
+        import android.graphics.Canvas;
+        import android.graphics.ColorMatrix;
+        import android.graphics.ColorMatrixColorFilter;
+        import android.graphics.Paint;
         import android.hardware.Camera;
         import android.media.MediaMetadataRetriever;
         import android.media.MediaRecorder;
@@ -13,6 +17,7 @@ package com.algorepublic.liveselfie;
         import android.os.Bundle;
         import android.os.Environment;
         import android.util.Log;
+        import android.view.Display;
         import android.view.Surface;
         import android.view.SurfaceHolder;
         import android.view.SurfaceView;
@@ -24,6 +29,8 @@ package com.algorepublic.liveselfie;
         import android.widget.TextView;
         import android.widget.Toast;
 
+        import com.bumptech.glide.Glide;
+
         import java.io.BufferedOutputStream;
         import java.io.ByteArrayOutputStream;
         import java.io.File;
@@ -31,6 +38,7 @@ package com.algorepublic.liveselfie;
         import java.io.FileOutputStream;
         import java.io.IOException;
         import java.text.SimpleDateFormat;
+        import java.util.ArrayList;
         import java.util.Date;
 
 /**
@@ -54,6 +62,9 @@ public class CameraActivity extends BaseActivity implements SurfaceHolder.Callba
     long maxDur;
     ProgressDialog progressDialog;
     MediaMetadataRetriever mediaMetadataRetriever = null;
+    BaseClass baseClass;
+    ImageView imageView;
+    byte[] bytes ;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -63,6 +74,8 @@ public class CameraActivity extends BaseActivity implements SurfaceHolder.Callba
         btn = (ImageView) findViewById(R.id.camera_button);
         flash = (ImageView) findViewById(R.id.flash);
 //        timeFrameBar = (SeekBar) findViewById(R.id.timeframe);
+        imageView = (ImageView) findViewById(R.id.gallery);
+        baseClass = (BaseClass) getApplicationContext();
         progressDialog = new ProgressDialog(this);
         progressDialog.setMessage("Saving...");
         progressDialog.setCancelable(false);
@@ -164,7 +177,7 @@ public class CameraActivity extends BaseActivity implements SurfaceHolder.Callba
         mediaRecorder.setVideoEncodingBitRate(512 * 1000);
 //        mediaRecorder.setVideoFrameRate(30);
         mediaRecorder.setVideoSize(640, 480);
-        mediaRecorder.setMaxDuration(15000);
+        mediaRecorder.setMaxDuration(4000);
         mediaRecorder.setOnInfoListener(this);
         finalPath = file;
         mediaRecorder.setOutputFile(file.getAbsolutePath());
@@ -198,32 +211,40 @@ public class CameraActivity extends BaseActivity implements SurfaceHolder.Callba
         if (i == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED){
             Log.e("recording Finished", "yes");
             mediaRecorder.stop();
-            mediaRecorder.reset();
-            mediaRecorder.release();
-            progressDialog.show();
+        //    mediaRecorder.reset();
+           // mediaRecorder.release();
+//            progressDialog.show();
             Uri uri = Uri.fromFile(finalPath);
-            MediaMetadataRetriever tRetriever = new MediaMetadataRetriever();
-            try{
-                tRetriever.setDataSource(getBaseContext(), uri);
+            Log.e("uri",uri.toString());
+            Intent intent = new Intent(CameraActivity.this,FilterActivity.class);
+            intent.putExtra("VideoUri",uri.toString());
+            startActivity(intent);
+            this.finish();
 
-                mediaMetadataRetriever = tRetriever;
-                //extract duration in millisecond, as String
-                String DURATION = mediaMetadataRetriever.extractMetadata(
-                        MediaMetadataRetriever.METADATA_KEY_DURATION);
-                Log.e("Duration: ",DURATION + " ms");
-                //convert to us, as int
-                maxDur = (long)(1000*Double.parseDouble(DURATION));
+//            MediaMetadataRetriever tRetriever = new MediaMetadataRetriever();
+//            try{
+//                tRetriever.setDataSource(getBaseContext(), uri);
+//
+//                mediaMetadataRetriever = tRetriever;
+//                //extract duration in millisecond, as String
+//                String DURATION = mediaMetadataRetriever.extractMetadata(
+//                        MediaMetadataRetriever.METADATA_KEY_DURATION);
+//                Log.e("Duration: ",DURATION + " ms");
+//                //convert to us, as int
+//                maxDur = (long)(1000*Double.parseDouble(DURATION));
+//
+////                timeFrameBar.setProgress(0);
+//                updateFrame();
+//            }catch(RuntimeException e){
+//                e.printStackTrace();
+//                Toast.makeText(CameraActivity.this,
+//                        "Something Wrong!",
+//                        Toast.LENGTH_LONG).show();
+//            }
+//            TaskSaveGIF myTaskSaveGIF = new TaskSaveGIF();
+//            myTaskSaveGIF.execute();
 
-//                timeFrameBar.setProgress(0);
-                updateFrame();
-            }catch(RuntimeException e){
-                e.printStackTrace();
-                Toast.makeText(CameraActivity.this,
-                        "Something Wrong!",
-                        Toast.LENGTH_LONG).show();
-            }
-            TaskSaveGIF myTaskSaveGIF = new TaskSaveGIF();
-            myTaskSaveGIF.execute();
+
 
 //            try {
 //                initRecorder(surfaceHolder.getSurface());
@@ -271,9 +292,10 @@ public class CameraActivity extends BaseActivity implements SurfaceHolder.Callba
             File outFile = new File(extStorageDirectory, "test.GIF");
             try {
                 BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(outFile));
-                bos.write(genGIF());
-                bos.flush();
-                bos.close();
+                genGIF();
+//                bos.write(genGIF());
+//                bos.flush();
+//                bos.close();
 
                 return(outFile.getAbsolutePath() + " Saved");
             } catch (FileNotFoundException e) {
@@ -287,6 +309,7 @@ public class CameraActivity extends BaseActivity implements SurfaceHolder.Callba
 
         @Override
         protected void onPostExecute(String result) {
+            Glide.with(CameraActivity.this).fromBytes().load(bytes).into(imageView);
             Toast.makeText(CameraActivity.this,
                     result,
                     Toast.LENGTH_LONG).show();
@@ -304,22 +327,57 @@ public class CameraActivity extends BaseActivity implements SurfaceHolder.Callba
 
             AnimatedGifEncoder animatedGifEncoder = new AnimatedGifEncoder();
             animatedGifEncoder.setDelay(100);
-
+            Log.e("before", "For loop");
             Bitmap bmFrame;
+            ArrayList<Bitmap> array = new ArrayList<>();
             animatedGifEncoder.start(bos);
+            int k = 0;
             for(int i=0; i<100; i+=5){
                 long frameTime = maxDur * i/100;
                 bmFrame = mediaMetadataRetriever.getFrameAtTime(frameTime);
-                animatedGifEncoder.addFrame(bmFrame);
+                array.add(bmFrame);
+//                animatedGifEncoder.addFrame(bmFrame);
                 publishProgress(i);
+                k++;
             }
+            Log.e("after","for loop");
+//            float[] colorTransform = {
+//                    0.33f, 0.33f, 0.33f, 0, 0,
+//                    0.50f, 0.59f, 0.59f, 0, 0,
+//                    0.11f, 0.11f, 0.11f, 0, 0};
+//
+//            ColorMatrix colorMatrix = new ColorMatrix();
+//            colorMatrix.setSaturation(0f); //Remove Colour
+//            colorMatrix.set(colorTransform); //Apply the Red
+//
+//            ColorMatrixColorFilter colorFilter = new ColorMatrixColorFilter(colorMatrix);
+//            Paint paint = new Paint();
+//            paint.setColorFilter(colorFilter);
+//            Display display = getWindowManager().getDefaultDisplay();
+//            Bitmap resultBitmap;
+//            for (int l=0;l<=array.size();l++) {
+//                resultBitmap = Bitmap.createBitmap(array.get(l), 0, (int) (display.getHeight() * 0.15), display.getWidth(), (int) (display.getHeight() * 0.75));
+//
+//                Canvas canvas = new Canvas(resultBitmap);
+//                canvas.drawBitmap(resultBitmap, 0, 0, paint);
+//                animatedGifEncoder.addFrame(resultBitmap);
+//                publishProgress(l);
+//            }
 
-            //last from at end
+
             bmFrame = mediaMetadataRetriever.getFrameAtTime(maxDur);
-            animatedGifEncoder.addFrame(bmFrame);
+//            animatedGifEncoder.addFrame(bmFrame);
             publishProgress(100);
-
             animatedGifEncoder.finish();
+
+//            byte[] a = new byte[bos.toByteArray().length];
+//            a = bos.toByteArray();
+//            Byte[] temp = new Byte[bos.toByteArray().length];
+//            for (int i = 0; i < a.length; i++) {
+//                temp[i] = a[i];
+//            }
+            bytes = new byte[bos.toByteArray().length];
+            bytes = bos.toByteArray();
             return bos.toByteArray();
         }
     }

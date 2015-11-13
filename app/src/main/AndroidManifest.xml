@@ -17,7 +17,9 @@
         android:label="@string/app_name"
         android:name="com.algorepublic.liveselfie.BaseClass"
         android:supportsRtl="true"
-        android:theme="@style/AppTheme" >
+        android:theme="@style/AppTheme"
+        android:allowClearUserData="true"
+        >
         <activity android:name=".CameraActivity"
             android:screenOrientation="portrait">
             <intent-filter>
