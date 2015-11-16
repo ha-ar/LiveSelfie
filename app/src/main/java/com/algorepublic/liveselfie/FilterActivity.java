@@ -11,15 +11,23 @@ import android.opengl.GLSurfaceView;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
+import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.Toast;
 
+import com.algorepublic.liveselfie.filter.IFAmaroFilter;
+import com.algorepublic.liveselfie.filter.IFEarlybirdFilter;
 import com.algorepublic.liveselfie.filter.IFRiseFilter;
 
+import java.util.logging.Filter;
+
 import jp.co.cyberagent.android.gpuimage.GPUImage;
+import jp.co.cyberagent.android.gpuimage.GPUImageAlphaBlendFilter;
 import jp.co.cyberagent.android.gpuimage.GPUImageFilter;
 import jp.co.cyberagent.android.gpuimage.GPUImageGammaFilter;
 import jp.co.cyberagent.android.gpuimage.GPUImageSepiaFilter;
+import jp.co.cyberagent.android.gpuimage.GPUImageToonFilter;
 
 public class FilterActivity extends BaseActivity{
 
@@ -32,10 +40,11 @@ public class FilterActivity extends BaseActivity{
     AnimatedGifEncoder animatedGifEncoder;
     Uri videoUri;
     byte[] bytes ;
-    private Bitmap[] bitmaps;
+    private Bitmap[] bitmaps , temp;
     int k =0;
     private GPUImageFilter mFilter;
     private GPUImageFilterTools.FilterAdjuster mFilterAdjuster;
+    Button applyFilter;
 
     @SuppressLint("NewApi")
     @Override
@@ -45,6 +54,7 @@ public class FilterActivity extends BaseActivity{
         gifImageView =(ImageView) findViewById(R.id.gifVeiw);
         mediaMetadataRetriever = new MediaMetadataRetriever();
         baseClass = (BaseClass) getApplicationContext();
+        applyFilter = (Button) findViewById(R.id.filter_btn);
         bitmaps = new Bitmap[21];
 //        File path = Environment.getExternalStoragePublicDirectory(
 //                Environment.DIRECTORY_MOVIES);
@@ -72,18 +82,93 @@ public class FilterActivity extends BaseActivity{
                     "Something Wrong!",
                     Toast.LENGTH_LONG).show();
         }
+
         genGIF();
 
+        applyFilter.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                GPUImageFilterTools.showDialog(FilterActivity.this, new GPUImageFilterTools.OnGpuImageFilterChosenListener() {
+                    @Override
+                    public void onGpuImageFilterChosenListener(GPUImageFilter filter) {
+                        genGIFFilter(filter);
+                    }
+                });
+            }
+        });
         final AnimationDrawable animation = new AnimationDrawable();
         animation.setOneShot(false);
         for (int j=0; j<bitmaps.length;j++){
             animation.addFrame(new BitmapDrawable(getResources(),bitmaps[j]),100);
         }
-         if (Build.VERSION.SDK_INT < 16){
-             gifImageView.setBackgroundDrawable(animation);
-         }else {
-             gifImageView.setBackground(animation);
-         }
+        if (Build.VERSION.SDK_INT < 16){
+            gifImageView.setBackgroundDrawable(animation);
+        }else {
+            gifImageView.setBackground(animation);
+        }
+        gifImageView.post(new Runnable() {
+            @Override
+            public void run() {
+                Log.e("test", "Yes");
+                animation.start();
+            }
+        });
+    }
+
+    private void genGIF() {
+        Bitmap bmFrame;
+        int k =0;
+        for (int i = 0; i < 100; i += 5) {
+            long frameTime = maxDur * i / 100;
+            bmFrame = mediaMetadataRetriever.getFrameAtTime(frameTime);
+                    //sepia.setSepiaColorFilter(mediaMetadataRetriever.getFrameAtTime(frameTime));
+            bitmaps[k] = bmFrame;
+            k++;
+        }
+        //last from at end
+        bmFrame = mediaMetadataRetriever.getFrameAtTime(maxDur);
+        bitmaps[k]= bmFrame;
+        temp = bitmaps;
+        k=0;
+        Log.e("bitmap size", bitmaps.length + " size");
+    }
+    private void genGIFFilter(final GPUImageFilter filter) {
+                mFilter = filter;
+        Bitmap bmFrame;
+        GPUImage gpuImage = new GPUImage(FilterActivity.this);
+//        mFilterAdjuster = new GPUImageFilterTools.FilterAdjuster(mFilter);
+        int k =0;
+        for (int i = 0; i < temp.length; i++) {
+            bmFrame = mediaMetadataRetriever.getFrameAtTime(i);
+            gpuImage.setImage(bmFrame);
+            gpuImage.setFilter(mFilter);
+            gpuImage.requestRender();
+            //sepia.setSepiaColorFilter(mediaMetadataRetriever.getFrameAtTime(frameTime));
+            temp[k] =gpuImage.getBitmapWithFilterApplied();
+            k++;
+        }
+        //last from at end
+        bmFrame = mediaMetadataRetriever.getFrameAtTime(temp.length);
+        gpuImage.setImage(bmFrame);
+        gpuImage.setFilter(mFilter);
+        gpuImage.requestRender();
+        temp[k]=gpuImage.getBitmapWithFilterApplied();
+        k=0;
+        startAnimation();
+        Log.e("bitmap size", temp.length + " size");
+    }
+
+    public void startAnimation(){
+        final AnimationDrawable animation = new AnimationDrawable();
+        animation.setOneShot(false);
+        for (int j=0; j<temp.length;j++){
+            animation.addFrame(new BitmapDrawable(getResources(),temp[j]),100);
+        }
+        if (Build.VERSION.SDK_INT < 16){
+            gifImageView.setBackgroundDrawable(animation);
+        }else {
+            gifImageView.setBackground(animation);
+        }
         gifImageView.post(new Runnable() {
             @Override
             public void run() {
@@ -91,29 +176,6 @@ public class FilterActivity extends BaseActivity{
                 animation.start();
             }
         });
-    }
-
-    private void genGIF() {
-        Sepia sepia = new Sepia();
-        Bitmap bmFrame;
-        GPUImage gpuImage = new GPUImage(FilterActivity.this);
-        int k =0;
-        for (int i = 0; i < 100; i += 5) {
-            long frameTime = maxDur * i / 100;
-            gpuImage.setFilter(new GPUImageSepiaFilter());
-            bmFrame = mediaMetadataRetriever.getFrameAtTime(frameTime);
-            gpuImage.setImage(bmFrame);
-                    //sepia.setSepiaColorFilter(mediaMetadataRetriever.getFrameAtTime(frameTime));
-            bitmaps[k] =bmFrame;
-            k++;
-        }
-        //last from at end
-        gpuImage.setFilter(new GPUImageGammaFilter());
-        bmFrame = mediaMetadataRetriever.getFrameAtTime(maxDur);
-        gpuImage.setImage(bmFrame);
-        bitmaps[k]=bmFrame;
-        k=0;
-        Log.e("bitmap size", bitmaps.length + " size");
     }
 
 }
